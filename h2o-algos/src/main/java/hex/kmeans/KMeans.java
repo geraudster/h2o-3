@@ -300,8 +300,8 @@ public class KMeans extends ClusteringModelBuilder<KMeansModel,KMeansModel.KMean
         if( model != null ) model.unlock(_job);
         _parms.read_unlock_frames(_job);
         Scope.exit();
+        tryComplete();
       }
-      tryComplete();
     }
 
     private TwoDimTable createModelSummaryTable(KMeansModel.KMeansOutput output) {

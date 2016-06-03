@@ -698,8 +698,8 @@ public class GLRM extends ModelBuilder<GLRMModel,GLRMModel.GLRMParameters,GLRMMo
         }
 
         Scope.exit(keep.toArray(new Key[0]));
+        tryComplete();
       }
-      tryComplete();
     }
 
     private TwoDimTable createModelSummaryTable(GLRMModel.GLRMOutput output) {
