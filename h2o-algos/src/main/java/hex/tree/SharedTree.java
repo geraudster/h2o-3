@@ -297,8 +297,8 @@ public abstract class SharedTree<M extends SharedTreeModel<M,P,O>, P extends Sha
         if( _model!=null ) _model.unlock(_job);
         Scope.exit( _model==null ? null : new Key[]{_model._key, ModelMetrics.buildKey(_model,_parms.train()), ModelMetrics.buildKey(_model,_parms.valid())});
         for (Key k : getGlobalQuantilesKeys()) if (k!=null) k.remove();
+        tryComplete();
       }
-      tryComplete();
     }
 
     // Abstract classes implemented by the tree builders

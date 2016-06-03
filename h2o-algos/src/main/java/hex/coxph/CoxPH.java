@@ -466,8 +466,8 @@ public class CoxPH extends ModelBuilder<CoxPHModel,CoxPHModel.CoxPHParameters,Co
       } finally {
         _parms.read_unlock_frames(_job);
         Scope.exit();
+        tryComplete();
       }
-      tryComplete();
     }
 
   }

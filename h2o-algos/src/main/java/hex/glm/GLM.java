@@ -897,112 +897,115 @@ public class GLM extends ModelBuilder<GLMModel,GLMParameters,GLMOutput> {
     }
     @Override
     public void compute2() {
-      Scope.enter();
-      _keys2Keep.put("dest",dest());
-      _parms.read_lock_frames(_job);
-      init(true);
-      if (error_count() > 0) {
-        throw H2OModelBuilderIllegalArgumentException.makeFromBuilder(GLM.this);
-      }
-      double nullDevTrain = Double.NaN;
-      double nullDevTest = Double.NaN;
-      if(_parms._lambda_search) {
-        nullDevTrain =  _parms._family == Family.multinomial
-          ?new GLMResDevTaskMultinomial(_job._key,_state._dinfo,getNullBeta(), _nclass).doAll(_state._dinfo._adaptedFrame)._likelihood*2
-          :new GLMResDevTask(_job._key, _state._dinfo, _parms, getNullBeta()).doAll(_state._dinfo._adaptedFrame)._resDev;
-        if(_validDinfo != null)
-          nullDevTest = _parms._family == Family.multinomial
-            ?new GLMResDevTaskMultinomial(_job._key,_validDinfo,getNullBeta(), _nclass).doAll(_validDinfo._adaptedFrame)._likelihood*2
-            :new GLMResDevTask(_job._key, _validDinfo, _parms, getNullBeta()).doAll(_validDinfo._adaptedFrame)._resDev;
-        _workPerIteration = WORK_TOTAL/_parms._nlambdas;
-      } else
-        _workPerIteration = 1 + (WORK_TOTAL/_parms._max_iterations);
-
-      if(_parms._family == Family.multinomial && _parms._solver != Solver.L_BFGS && (_parms._solver != Solver.AUTO || defaultSolver() != Solver.L_BFGS) ) {
-        double [] nb = getNullBeta();
-        double maxRow = ArrayUtils.maxValue(nb);
-        double sumExp = 0;
-        int P = _dinfo.fullN();
-        int N = _dinfo.fullN()+1;
-        for(int i = 1; i < _nclass; ++i)
-          sumExp += Math.exp(nb[i*N + P] - maxRow);
-        _dinfo.addResponse(new String[]{"__glm_sumExp", "__glm_maxRow"}, _dinfo._adaptedFrame.anyVec().makeDoubles(2, new double[]{sumExp,maxRow}));
-      }
-      double testDevOld = Double.NaN;
-
-      double oldDev = _validDinfo != null?nullDevTest:nullDevTrain;
-      final double nullDev = oldDev;
-      double newDev;
-
-      double [] devHistory = _parms._stopping_rounds>0?new double[_parms._stopping_rounds]:null;
-
-      int impcnt = 0;
-      if(!_parms._lambda_search)
-        updateProgress(false);
-      // lambda search loop
-      for (int i = 0; i < _parms._lambda.length; ++i) { // lambda search
-        _model.addSubmodel(_state.beta(),_parms._lambda[i],_state._iter);
-        _state.setLambda(_parms._lambda[i]);
-        checkMemoryFootPrint(_state.activeData());
-        do {
-          if(_parms._family == Family.multinomial)
-            for(int c = 0; c < _nclass; ++c)
-              Log.info(LogMsg("Class " + c + " got " + _state.activeDataMultinomial(c).fullN() + " active columns out of " + _state._dinfo.fullN() + " total"));
-          else
-            Log.info(LogMsg("Got " + _state.activeData().fullN() + " active columns out of " + _state._dinfo.fullN() + " total"));
-          fitModel();
-        } while(!_state.checkKKTs());
-        Log.info(LogMsg("solution has " + ArrayUtils.countNonzeros(_state.beta()) + " nonzeros"));
-
-        if(_parms._lambda_search) {  // compute train and test dev
-          double trainDev = newDev = _parms._family == Family.multinomial
-            ?new GLMResDevTaskMultinomial(_job._key,_state._dinfo,_state.beta(), _nclass).doAll(_state._dinfo._adaptedFrame)._likelihood*2
-            :new GLMResDevTask(_job._key, _state._dinfo, _parms, _state.beta()).doAll(_state._dinfo._adaptedFrame)._resDev;
-          double testDev = -1;
-          if(_validDinfo != null)
-            newDev = testDev = _parms._family == Family.multinomial
-              ?new GLMResDevTaskMultinomial(_job._key,_validDinfo,_dinfo.denormalizeBeta(_state.beta()), _nclass).doAll(_validDinfo._adaptedFrame)._likelihood*2
-              :new GLMResDevTask(_job._key, _validDinfo, _parms, _dinfo.denormalizeBeta(_state.beta())).doAll(_validDinfo._adaptedFrame)._resDev;
-          Log.info(LogMsg("train deviance = " + trainDev + ", test deviance = " + testDev));
-          _lsc.addLambdaScore(_state._iter,ArrayUtils.countNonzeros(_state.beta()), _state.lambda(),1 - trainDev/nullDevTrain, 1.0 - testDev/nullDevTest);
-          _model.update(_state.beta(), trainDev, testDev, _state._iter);
-          if(_parms._stopping_rounds > 0) {
-            devHistory[i % devHistory.length] = (oldDev - newDev)/oldDev;
-          }
-          oldDev = newDev;
-          if(_parms._early_stopping && _parms._stopping_rounds > 0 && i > _parms._stopping_rounds) {
-            double s = 0;
-            for(double d:devHistory) s += d;
-            s /= devHistory.length;
-            if(s < _parms._stopping_tolerance) {
-              Log.info(LogMsg("converged at lambda[" + i + "] = " + _parms._lambda[i] + ", average improvement = " + s));
-              break; // started overfitting
-            }
-          }
-          testDevOld = testDev;
-          if(_parms._score_each_iteration || timeSinceLastScoring() > _scoringInterval)
-              scoreAndUpdateModel(); // update partial results
-          _job.update(_workPerIteration,"iter=" + _state._iter + " lmb=" + lambdaFormatter.format(_state.lambda()) + "exp.dev.ratio trn/tst= " + devFormatter.format(1 - trainDev/nullDevTrain) + "/" + devFormatter.format(1.0 - testDev/nullDevTest) + " P=" + ArrayUtils.countNonzeros(_state.beta()));
+      try {
+        Scope.enter();
+        _keys2Keep.put("dest", dest());
+        _parms.read_lock_frames(_job);
+        init(true);
+        if (error_count() > 0) {
+          throw H2OModelBuilderIllegalArgumentException.makeFromBuilder(GLM.this);
+        }
+        double nullDevTrain = Double.NaN;
+        double nullDevTest = Double.NaN;
+        if (_parms._lambda_search) {
+          nullDevTrain = _parms._family == Family.multinomial
+                  ? new GLMResDevTaskMultinomial(_job._key, _state._dinfo, getNullBeta(), _nclass).doAll(_state._dinfo._adaptedFrame)._likelihood * 2
+                  : new GLMResDevTask(_job._key, _state._dinfo, _parms, getNullBeta()).doAll(_state._dinfo._adaptedFrame)._resDev;
+          if (_validDinfo != null)
+            nullDevTest = _parms._family == Family.multinomial
+                    ? new GLMResDevTaskMultinomial(_job._key, _validDinfo, getNullBeta(), _nclass).doAll(_validDinfo._adaptedFrame)._likelihood * 2
+                    : new GLMResDevTask(_job._key, _validDinfo, _parms, getNullBeta()).doAll(_validDinfo._adaptedFrame)._resDev;
+          _workPerIteration = WORK_TOTAL / _parms._nlambdas;
         } else
-          _model.update(_state.beta(), -1, -1, _state._iter);
+          _workPerIteration = 1 + (WORK_TOTAL / _parms._max_iterations);
+
+        if (_parms._family == Family.multinomial && _parms._solver != Solver.L_BFGS && (_parms._solver != Solver.AUTO || defaultSolver() != Solver.L_BFGS)) {
+          double[] nb = getNullBeta();
+          double maxRow = ArrayUtils.maxValue(nb);
+          double sumExp = 0;
+          int P = _dinfo.fullN();
+          int N = _dinfo.fullN() + 1;
+          for (int i = 1; i < _nclass; ++i)
+            sumExp += Math.exp(nb[i * N + P] - maxRow);
+          _dinfo.addResponse(new String[]{"__glm_sumExp", "__glm_maxRow"}, _dinfo._adaptedFrame.anyVec().makeDoubles(2, new double[]{sumExp, maxRow}));
+        }
+        double testDevOld = Double.NaN;
+
+        double oldDev = _validDinfo != null ? nullDevTest : nullDevTrain;
+        final double nullDev = oldDev;
+        double newDev;
+
+        double[] devHistory = _parms._stopping_rounds > 0 ? new double[_parms._stopping_rounds] : null;
+
+        int impcnt = 0;
+        if (!_parms._lambda_search)
+          updateProgress(false);
+        // lambda search loop
+        for (int i = 0; i < _parms._lambda.length; ++i) { // lambda search
+          _model.addSubmodel(_state.beta(), _parms._lambda[i], _state._iter);
+          _state.setLambda(_parms._lambda[i]);
+          checkMemoryFootPrint(_state.activeData());
+          do {
+            if (_parms._family == Family.multinomial)
+              for (int c = 0; c < _nclass; ++c)
+                Log.info(LogMsg("Class " + c + " got " + _state.activeDataMultinomial(c).fullN() + " active columns out of " + _state._dinfo.fullN() + " total"));
+            else
+              Log.info(LogMsg("Got " + _state.activeData().fullN() + " active columns out of " + _state._dinfo.fullN() + " total"));
+            fitModel();
+          } while (!_state.checkKKTs());
+          Log.info(LogMsg("solution has " + ArrayUtils.countNonzeros(_state.beta()) + " nonzeros"));
+
+          if (_parms._lambda_search) {  // compute train and test dev
+            double trainDev = newDev = _parms._family == Family.multinomial
+                    ? new GLMResDevTaskMultinomial(_job._key, _state._dinfo, _state.beta(), _nclass).doAll(_state._dinfo._adaptedFrame)._likelihood * 2
+                    : new GLMResDevTask(_job._key, _state._dinfo, _parms, _state.beta()).doAll(_state._dinfo._adaptedFrame)._resDev;
+            double testDev = -1;
+            if (_validDinfo != null)
+              newDev = testDev = _parms._family == Family.multinomial
+                      ? new GLMResDevTaskMultinomial(_job._key, _validDinfo, _dinfo.denormalizeBeta(_state.beta()), _nclass).doAll(_validDinfo._adaptedFrame)._likelihood * 2
+                      : new GLMResDevTask(_job._key, _validDinfo, _parms, _dinfo.denormalizeBeta(_state.beta())).doAll(_validDinfo._adaptedFrame)._resDev;
+            Log.info(LogMsg("train deviance = " + trainDev + ", test deviance = " + testDev));
+            _lsc.addLambdaScore(_state._iter, ArrayUtils.countNonzeros(_state.beta()), _state.lambda(), 1 - trainDev / nullDevTrain, 1.0 - testDev / nullDevTest);
+            _model.update(_state.beta(), trainDev, testDev, _state._iter);
+            if (_parms._stopping_rounds > 0) {
+              devHistory[i % devHistory.length] = (oldDev - newDev) / oldDev;
+            }
+            oldDev = newDev;
+            if (_parms._early_stopping && _parms._stopping_rounds > 0 && i > _parms._stopping_rounds) {
+              double s = 0;
+              for (double d : devHistory) s += d;
+              s /= devHistory.length;
+              if (s < _parms._stopping_tolerance) {
+                Log.info(LogMsg("converged at lambda[" + i + "] = " + _parms._lambda[i] + ", average improvement = " + s));
+                break; // started overfitting
+              }
+            }
+            testDevOld = testDev;
+            if (_parms._score_each_iteration || timeSinceLastScoring() > _scoringInterval)
+              scoreAndUpdateModel(); // update partial results
+            _job.update(_workPerIteration, "iter=" + _state._iter + " lmb=" + lambdaFormatter.format(_state.lambda()) + "exp.dev.ratio trn/tst= " + devFormatter.format(1 - trainDev / nullDevTrain) + "/" + devFormatter.format(1.0 - testDev / nullDevTest) + " P=" + ArrayUtils.countNonzeros(_state.beta()));
+          } else
+            _model.update(_state.beta(), -1, -1, _state._iter);
+        }
+        if (_state._iter >= _parms._max_iterations)
+          _job.warn("Reached maximum number of iterations " + _parms._max_iterations + "!");
+        _model._output.pickBestModel();
+        scoreAndUpdateModel();
+        if (!(_parms)._lambda_search && _state._iter < _parms._max_iterations) {
+          _job.update(_workPerIteration * (_parms._max_iterations - _state._iter));
+        }
+        if (_iceptAdjust != 0) { // apply the intercept adjust according to prior probability
+          assert _parms._intercept;
+          double[] b = _model._output._global_beta;
+          b[b.length - 1] += _iceptAdjust;
+          for (Submodel sm : _model._output._submodels)
+            sm.beta[sm.beta.length - 1] += _iceptAdjust;
+          _model.update(_job._key);
+        }
+      } finally {
+        doCleanup();
+        tryComplete();
       }
-      if(_state._iter >= _parms._max_iterations)
-        _job.warn("Reached maximum number of iterations " + _parms._max_iterations + "!");
-      _model._output.pickBestModel();
-      scoreAndUpdateModel();
-      if(!(_parms)._lambda_search && _state._iter < _parms._max_iterations){
-        _job.update(_workPerIteration*(_parms._max_iterations - _state._iter));
-      }
-      if(_iceptAdjust != 0) { // apply the intercept adjust according to prior probability
-        assert _parms._intercept;
-        double [] b = _model._output._global_beta;
-        b[b.length-1] += _iceptAdjust;
-        for(Submodel sm:_model._output._submodels)
-          sm.beta[sm.beta.length-1] += _iceptAdjust;
-        _model.update(_job._key);
-      }
-      doCleanup();
-      tryComplete();
     }
 
     @Override public boolean onExceptionalCompletion(Throwable t, CountedCompleter caller){

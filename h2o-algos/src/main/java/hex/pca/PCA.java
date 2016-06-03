@@ -295,8 +295,8 @@ public class PCA extends ModelBuilder<PCAModel,PCAModel.PCAParameters,PCAModel.P
         if (model != null) model.unlock(_job);
         if (dinfo != null) dinfo.remove();
         Scope.exit();
+        tryComplete();
       }
-      tryComplete();
     }
   }
 }

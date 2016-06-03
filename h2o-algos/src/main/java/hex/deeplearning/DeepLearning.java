@@ -207,8 +207,8 @@ public class DeepLearning extends ModelBuilder<DeepLearningModel,DeepLearningMod
       } finally {
         _parms.read_unlock_frames(_job);
         Scope.exit();
+        tryComplete();
       }
-      tryComplete();
     }
 
     /**

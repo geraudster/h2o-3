@@ -144,8 +144,8 @@ public class Aggregator extends ModelBuilder<AggregatorModel,AggregatorModel.Agg
         _parms.read_unlock_frames(_job);
         if (model != null) model.unlock(_job);
         if (di!=null) di.remove();
+        tryComplete();
       }
-      tryComplete();
     }
   }
 
